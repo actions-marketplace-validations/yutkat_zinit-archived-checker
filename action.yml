@@ -1,0 +1,58 @@
+name: "Zinit Archived Plugin Checker"
+description: "Check if Zinit-managed plugins are archived, moved, or deleted"
+
+inputs:
+  github-token:
+    description: "GitHub token for API requests"
+    required: false
+    default: ${{ github.token }}
+  ignore-plugins:
+    description: "List of plugins to ignore (one per line or comma-separated)"
+    required: false
+    default: ""
+  zinit-home-dir:
+    description: "Path to Zinit home; teleid files under this directory will be read to determine plugins"
+    required: true
+
+outputs:
+  archived-plugins:
+    description: "JSON array of archived plugins"
+    value: ${{ steps.check.outputs.archived-plugins }}
+  deleted-plugins:
+    description: "JSON array of deleted plugins"
+    value: ${{ steps.check.outputs.deleted-plugins }}
+  moved-plugins:
+    description: "JSON array of moved/renamed plugins"
+    value: ${{ steps.check.outputs.moved-plugins }}
+  has-issues:
+    description: "Whether any issues were found"
+    value: ${{ steps.check.outputs.has-issues }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Extract plugin list
+      shell: bash
+      id: extract
+      run: ${{ github.action_path }}/scripts/extract-plugins.sh "${{ inputs.zinit-home-dir }}" "github_repos.txt"
+
+    - name: Check plugin status
+      shell: bash
+      id: check
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        IGNORE_PLUGINS: ${{ inputs.ignore-plugins }}
+      run: |
+        set +e
+        ${{ github.action_path }}/scripts/check-plugins.sh "github_repos.txt" "check-results.json"
+        EXIT_CODE=$?
+        set -e
+
+        if [ -f "check-results.json" ]; then
+          echo "archived-plugins=$(jq -c '."archived_plugins"' check-results.json)" >> "$GITHUB_OUTPUT"
+          echo "deleted-plugins=$(jq -c '."deleted_plugins"' check-results.json)" >> "$GITHUB_OUTPUT"
+          echo "moved-plugins=$(jq -c '."moved_plugins"' check-results.json)" >> "$GITHUB_OUTPUT"
+          echo "has-issues=$(jq -r '."has_issues"' check-results.json)" >> "$GITHUB_OUTPUT"
+        fi
+
+        exit $EXIT_CODE

@@ -1,0 +1,80 @@
+name: Check Zinit Plugins
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  check-plugins:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Checkout dotfiles
+        uses: actions/checkout@v6
+        with:
+          repository: yutkat/dotfiles
+          path: dotfiles
+
+      - name: Install required packages
+        run: sudo apt-get update && sudo apt-get install -y git zsh
+
+      - name: Prepare zinit environment
+        run: |
+          zsh -ic '
+            source ~/.config/zsh/rc/pluginlist.zsh
+            exit 0
+          '
+        env:
+          HOME: ${{ github.workspace }}/dotfiles
+          TERM: "screen-256color"
+
+      - name: Check plugins
+        id: check
+        uses: ./ # Use the action from this repository
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          zinit-home-dir: ${{ github.workspace }}/dotfiles/.local/share/zsh/zinit
+
+      - name: Display results
+        if: always()
+        env:
+          HAS_ISSUES: ${{ steps.check.outputs.has-issues }}
+          ARCHIVED_PLUGINS: ${{ steps.check.outputs.archived-plugins }}
+          DELETED_PLUGINS: ${{ steps.check.outputs.deleted-plugins }}
+          MOVED_PLUGINS: ${{ steps.check.outputs.moved-plugins }}
+        run: |
+          echo "### Plugin Check Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$HAS_ISSUES" = "true" ]; then
+            echo "⚠️ **Issues found!**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+
+            if [ "$ARCHIVED_PLUGINS" != "[]" ] && [ -n "$ARCHIVED_PLUGINS" ]; then
+              echo "**Archived Plugins:**" >> "$GITHUB_STEP_SUMMARY"
+              echo "$ARCHIVED_PLUGINS" | jq -r '.[]' | while read -r plugin; do
+                echo "- 📦 $plugin" >> "$GITHUB_STEP_SUMMARY"
+              done
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+            fi
+
+            if [ "$MOVED_PLUGINS" != "[]" ] && [ -n "$MOVED_PLUGINS" ]; then
+              echo "**Moved Plugins:**" >> "$GITHUB_STEP_SUMMARY"
+              echo "$MOVED_PLUGINS" | jq -r '.[] | "- ➡️ " + .old + " → " + .new' >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+            fi
+
+            if [ "$DELETED_PLUGINS" != "[]" ] && [ -n "$DELETED_PLUGINS" ]; then
+              echo "**Deleted Plugins:**" >> "$GITHUB_STEP_SUMMARY"
+              echo "$DELETED_PLUGINS" | jq -r '.[]' | while read -r plugin; do
+                echo "- ❌ $plugin" >> "$GITHUB_STEP_SUMMARY"
+              done
+            fi
+          else
+            echo "✅ All plugins are healthy!" >> "$GITHUB_STEP_SUMMARY"
+          fi

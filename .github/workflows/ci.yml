@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: "./scripts ./tests"
+
+      - name: Install shfmt
+        uses: mfinelli/setup-shfmt@v3
+
+      - name: Run shfmt check
+        run: shfmt -d -i 2 -ci .
+
+      - name: Run actionlint
+        uses: reviewdog/action-actionlint@v1
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run tests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd tests
+          chmod +x run-tests.sh
+          ./run-tests.sh
